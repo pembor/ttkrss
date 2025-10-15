@@ -1,4 +1,4 @@
-name: Update TTKRSS
+name: Update TikTok RSS
 
 on:
   workflow_dispatch:
@@ -12,55 +12,36 @@ jobs:
       contents: write
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
         with:
-          fetch-depth: 0
+          python-version: '3.11'
 
-      - name: Show git status (debug)
+      - name: Install deps
         run: |
-          git status
-          ls -la
+          pip install -r requirements.txt
 
-      - name: Print subscriptions.csv with line numbers (debug)
+      - name: Show subscriptions (debug)
         run: |
           echo "=== subscriptions.csv ==="
-          nl -ba subscriptions.csv || echo "subscriptions.csv NOT FOUND"
-          echo "========================="
+          nl -ba subscriptions.csv || echo "MISSING"
 
-      - name: Clean old outputs
+      - name: Clean outputs
         run: |
           mkdir -p feeds docs
-          rm -f feeds/*.xml || true
-          rm -f docs/*.xml || true
+          rm -f feeds/*.xml docs/*.xml || true
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
-
-      - name: Install dependencies (safe)
+      - name: Generate feeds
+        env:
+          GH_PAGES_HOST: ${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
         run: |
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          pip install requests beautifulsoup4
+          python -u main.py
 
-      - name: Run generator
+      - name: Copy to docs/ (GitHub Pages)
         run: |
-          if [ -f main.py ]; then python main.py; else echo "main.py not found"; fi
-          if [ -f postprocessing.py ]; then python postprocessing.py || true; fi
-
-      - name: Collect any XMLs into feeds/ and docs/
-        run: |
-          found=0
-          while IFS= read -r -d '' f; do
-            found=1
-            echo "Found XML: $f"
-            cp "$f" feeds/ || true
-            cp "$f" docs/ || true
-          done < <(find . -type f -name "*.xml" -print0)
-          if [ "$found" -eq 0 ]; then echo "Nenhum XML gerado"; fi
-          ls -la feeds || true
-          ls -la docs || true
+          cp -f feeds/*.xml docs/ || true
+          ls -la feeds docs || true
 
       - name: Commit and push
         run: |
@@ -68,4 +49,4 @@ jobs:
           git config user.email "github-actions@github.com"
           git add -A
           git commit -m "update feeds" || echo "No changes"
-          git push
+          git push || true
