@@ -3,7 +3,7 @@ name: Update TikTok RSS
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 * * * *'  # a cada 1h
+    - cron: '0 * * * *'  # roda a cada 1h
 
 jobs:
   build:
@@ -19,18 +19,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install Python deps
-        run: |
-          pip install -r requirements.txt
-
-      - name: Cache Playwright
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright
-
-      - name: Install Playwright browsers (Chromium)
-        run: |
-          python -m playwright install --with-deps chromium
+        run: pip install -r requirements.txt
 
       - name: Show subscriptions (debug)
         run: |
