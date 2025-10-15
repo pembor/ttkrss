@@ -2,20 +2,20 @@ import csv, os, sys, time
 from datetime import datetime, timezone
 from pathlib import Path
 from feedgen.feed import FeedGenerator
-
-# lib moderna (não é o TikTokApi antigo)
-from tiktokapipy.api import TikTokAPI  # pip install tiktokapipy
+from tiktokapipy.api import TikTokAPI  # lib moderna (não é a antiga TikTokApi)
 
 OUT_DIR = Path("feeds")
 OUT_DIR.mkdir(parents=True, exist_ok=True)
-
 SUBS_PATH = Path("subscriptions.csv")
-if not SUBS_PATH.exists():
-    print("subscriptions.csv não encontrado na raiz", file=sys.stderr)
-    sys.exit(0)
+
+RETRIES = 3
+NAV_TIMEOUT = 60.0  # segundos
 
 def read_users():
     users = []
+    if not SUBS_PATH.exists():
+        print("subscriptions.csv não encontrado na raiz", file=sys.stderr)
+        return users
     with SUBS_PATH.open("r", encoding="utf-8") as f:
         for raw in f:
             u = raw.strip().lstrip("@").rstrip(",")
@@ -42,17 +42,14 @@ def build_feed(username, videos):
         vid_url = f"https://www.tiktok.com/@{username}/video/{v.id}"
         fe.id(vid_url)
         fe.link(href=vid_url)
-        # título curto
         title = (v.desc or "Vídeo no TikTok").strip()
         if len(title) > 140:
             title = title[:137] + "..."
         fe.title(title or f"Vídeo {v.id}")
-        # data
         try:
             fe.published(iso8601(v.create_time))
         except Exception:
             fe.published(datetime.now(timezone.utc))
-        # descrição simples com thumb
         thumb = getattr(v, "video", None)
         cover = getattr(thumb, "cover", None) if thumb else None
         cover_url = getattr(cover, "url_list", [None])[0] if cover else None
@@ -60,12 +57,10 @@ def build_feed(username, videos):
         if cover_url:
             html += f'<p><img src="{cover_url}" alt="thumb"/></p>'
         fe.content(html, type='CDATA')
-
     return fg.rss_str(pretty=True)
 
 def fetch_user_videos(api, unique_id, limit=15):
-    # unique_id = nome do usuário sem @ (ex.: "eupresley")
-    user = api.user(unique_id)  # ✅ passa como posicional
+    user = api.user(unique_id)  # passa sem 'username='
     out = []
     for i, v in enumerate(user.videos):
         out.append(v)
@@ -79,25 +74,26 @@ def main():
         print("subscriptions.csv está vazio.")
         return
 
-    # Variável opcional pra montar link <self> certo no RSS (GitHub Pages)
-    # Ex.: GH_PAGES_HOST="SEUUSER.github.io/ttkrss"
-    host = os.getenv("GH_PAGES_HOST", "")
-    if not host:
-        print("Dica: defina GH_PAGES_HOST no workflow para links 'self' corretos.")
-
-    # Usa API síncrona (sem login)
-    with TikTokAPI() as api:
-        for u in users:
-            try:
-                print(f"Coletando @{u} ...")
-                vids = fetch_user_videos(api, u, limit=20)
-                xml = build_feed(u, vids)
-                (OUT_DIR / f"{u}.xml").write_bytes(xml)
-                print(f"OK: feeds/{u}.xml ({len(vids)} vídeos)")
-            except Exception as e:
-                print(f"ERRO @{u}: {e}", file=sys.stderr)
-                # não derruba o job por causa de 1 usuário
-                time.sleep(1)
+    for attempt in range(1, RETRIES + 1):
+        try:
+            print(f">>> abrindo TikTokAPI (tentativa {attempt}/{RETRIES}) com timeout {NAV_TIMEOUT}s")
+            with TikTokAPI(navigation_timeout=NAV_TIMEOUT) as api:
+                for u in users:
+                    try:
+                        print(f"Coletando @{u} ...")
+                        vids = fetch_user_videos(api, u, limit=20)
+                        xml = build_feed(u, vids)
+                        (OUT_DIR / f"{u}.xml").write_bytes(xml)
+                        print(f"OK: feeds/{u}.xml ({len(vids)} vídeos)")
+                    except Exception as e:
+                        print(f"ERRO @{u}: {e}")
+                return
+        except Exception as e:
+            print(f"[API/Browser] falhou (tentativa {attempt}/{RETRIES}): {e}")
+            if attempt < RETRIES:
+                time.sleep(5 * attempt)
+            else:
+                print("Desisti após várias tentativas.")
 
 if __name__ == "__main__":
     main()
