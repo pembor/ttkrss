@@ -1,3 +1,4 @@
-TikTokApi
-feedgen
-
+TikTokApi==0.10.8
+requests
+beautifulsoup4
+lxml
