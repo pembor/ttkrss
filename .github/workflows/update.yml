@@ -3,15 +3,36 @@ name: Update TTKRSS
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 * * * *'  # roda a cada 1h
+    - cron: '0 * * * *'  # a cada 1h
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Show git status (debug)
+        run: |
+          git status
+          ls -la
+
+      - name: Print subscriptions.csv with line numbers (debug)
+        run: |
+          echo "=== subscriptions.csv ==="
+          nl -ba subscriptions.csv || echo "subscriptions.csv NOT FOUND"
+          echo "========================="
+
+      - name: Clean old outputs
+        run: |
+          mkdir -p feeds docs
+          rm -f feeds/*.xml || true
+          rm -f docs/*.xml || true
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -23,31 +44,28 @@ jobs:
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           pip install requests beautifulsoup4
 
-      - name: Ensure output dirs exist
+      - name: Run generator
         run: |
-          mkdir -p feeds
-          mkdir -p docs
-
-      - name: Run generator (main.py if exists)
-        run: |
-          if [ -f main.py ]; then python main.py; else echo "main.py not found, skipping"; fi
+          if [ -f main.py ]; then python main.py; else echo "main.py not found"; fi
           if [ -f postprocessing.py ]; then python postprocessing.py || true; fi
 
-      - name: Collect any XMLs into docs/ and feeds/
+      - name: Collect any XMLs into feeds/ and docs/
         run: |
-          # copia todo .xml achado até 3 níveis p/ docs/ e feeds/
           found=0
           while IFS= read -r -d '' f; do
             found=1
-            cp "$f" docs/ || true
+            echo "Found XML: $f"
             cp "$f" feeds/ || true
-          done < <(find . -maxdepth 3 -type f -name "*.xml" -print0)
-          if [ "$found" -eq 0 ]; then echo "Nenhum XML encontrado (ainda)"; fi
+            cp "$f" docs/ || true
+          done < <(find . -type f -name "*.xml" -print0)
+          if [ "$found" -eq 0 ]; then echo "Nenhum XML gerado"; fi
+          ls -la feeds || true
+          ls -la docs || true
 
       - name: Commit and push
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
-          git add feeds/*.xml docs/*.xml || true
+          git add -A
           git commit -m "update feeds" || echo "No changes"
           git push
