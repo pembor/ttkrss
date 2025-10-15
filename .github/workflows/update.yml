@@ -22,6 +22,12 @@ jobs:
         run: |
           pip install -r requirements.txt
 
+      - name: Cache Playwright
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright
+
       - name: Install Playwright browsers (Chromium)
         run: |
           python -m playwright install --with-deps chromium
