@@ -1,13 +1,14 @@
-name: Update TikTok RSS
+name: Update TTKRSS
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 * * * *'  # roda a cada 1 hora
+    - cron: '0 * * * *'  # roda a cada 1h
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -17,16 +18,20 @@ jobs:
         with:
           python-version: '3.x'
 
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+      - name: Install dependencies (safe)
+        run: |
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          pip install requests beautifulsoup4
 
       - name: Run TikTokRSS
-        run: python main.py
+        run: |
+          if [ -f main.py ]; then python main.py; else echo "main.py not found"; fi
 
       - name: Commit and push feeds
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
-          git add feeds/*.xml
+          git add feeds/*.xml || echo "no xml"
           git commit -m "update feeds" || echo "No changes"
           git push
+
