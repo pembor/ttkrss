@@ -63,9 +63,9 @@ def build_feed(username, videos):
 
     return fg.rss_str(pretty=True)
 
-def fetch_user_videos(api, username, limit=15):
-    # v.videos é um iterador; vamos limitar por segurança
-    user = api.user(username=username)
+def fetch_user_videos(api, unique_id, limit=15):
+    # unique_id = nome do usuário sem @ (ex.: "eupresley")
+    user = api.user(unique_id)  # ✅ passa como posicional
     out = []
     for i, v in enumerate(user.videos):
         out.append(v)
