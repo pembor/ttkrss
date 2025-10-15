@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 # ghPagesURL = "https://conoro.github.io/tiktok-rss-flat/"
 
 # Custom Domain
-ghPagesURL = "https://jerintn.github.io/TikTokRSS/"
+ghPagesURL = "https://pembor.github.io/ttkrss/"
 
 api = TikTokApi.get_instance()
 
@@ -42,3 +42,4 @@ with open('subscriptions.csv') as f:
             fe.description("<img src='" + tiktok['video']['cover'] + "' />")
 
         fg.rss_file('rss/' + user + '.xml') # Write the RSS feed to a file
+
