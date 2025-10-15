@@ -23,15 +23,31 @@ jobs:
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           pip install requests beautifulsoup4
 
-      - name: Run TikTokRSS
+      - name: Ensure output dirs exist
         run: |
-          if [ -f main.py ]; then python main.py; else echo "main.py not found"; fi
+          mkdir -p feeds
+          mkdir -p docs
 
-      - name: Commit and push feeds
+      - name: Run generator (main.py if exists)
+        run: |
+          if [ -f main.py ]; then python main.py; else echo "main.py not found, skipping"; fi
+          if [ -f postprocessing.py ]; then python postprocessing.py || true; fi
+
+      - name: Collect any XMLs into docs/ and feeds/
+        run: |
+          # copia todo .xml achado até 3 níveis p/ docs/ e feeds/
+          found=0
+          while IFS= read -r -d '' f; do
+            found=1
+            cp "$f" docs/ || true
+            cp "$f" feeds/ || true
+          done < <(find . -maxdepth 3 -type f -name "*.xml" -print0)
+          if [ "$found" -eq 0 ]; then echo "Nenhum XML encontrado (ainda)"; fi
+
+      - name: Commit and push
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
-          git add feeds/*.xml || echo "no xml"
+          git add feeds/*.xml docs/*.xml || true
           git commit -m "update feeds" || echo "No changes"
           git push
-
