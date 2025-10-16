@@ -3,7 +3,7 @@ name: Update TikTok RSS
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 * * * *'  # a cada 1h
+    - cron: '0 * * * *'  # roda a cada 1h
 
 jobs:
   build:
@@ -31,10 +31,11 @@ jobs:
           mkdir -p feeds docs
           rm -f feeds/*.xml docs/*.xml || true
 
-      - name: Generate feeds via RSSHub
+      - name: Generate feeds via RSSHub (with mirror fallback)
         env:
-          # se quiser trocar a instância, mude aqui
-          RSSHUB_BASE: https://rsshub.app
+          # Pode passar UMA OU MAIS bases separadas por vírgula
+          # Ex.: "https://SEU-WORKER.workers.dev,https://rsshub.app"
+          RSSHUB_BASES: ${{ vars.RSSHUB_BASES }}
         run: |
           python -u main.py
 
