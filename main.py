@@ -1,12 +1,13 @@
-import os, sys, time, json
+import os, sys, time
 from pathlib import Path
-from datetime import datetime, timezone
 import requests
-from feedgen.feed import FeedGenerator
 
 OUT_DIR = Path("feeds")
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 SUBS_PATH = Path("subscriptions.csv")
+
+# Base do RSSHub (pode trocar por outra instância pública ou sua própria)
+RSSHUB_BASE = os.getenv("RSSHUB_BASE", "https://rsshub.app").rstrip("/")
 
 def read_users():
     users = []
@@ -20,35 +21,8 @@ def read_users():
                 users.append(u)
     return users
 
-def build_feed(username, videos):
-    fg = FeedGenerator()
-    fg.id(f"https://www.tiktok.com/@{username}")
-    fg.title(f"TikTok – @{username}")
-    fg.link(href=f"https://www.tiktok.com/@{username}", rel='alternate')
-    fg.link(href=f"https://{os.getenv('GH_PAGES_HOST','example.com')}/feeds/{username}.xml", rel='self')
-    fg.description(f"Posts públicos de @{username}")
-    fg.language('pt-BR')
-
-    for v in videos:
-        vid_url = f"https://www.tiktok.com/@{username}/video/{v['id']}"
-        fe = fg.add_entry()
-        fe.id(vid_url)
-        fe.link(href=vid_url)
-        title = v.get('desc', 'Vídeo no TikTok').strip()
-        if len(title) > 140:
-            title = title[:137] + "..."
-        fe.title(title)
-        ts = v.get('createTime', int(time.time()))
-        fe.published(datetime.fromtimestamp(int(ts), timezone.utc))
-        cover = v.get('video', {}).get('cover', '')
-        html = f"<p>{title}</p>"
-        if cover:
-            html += f'<p><img src="{cover}" alt="thumb"/></p>'
-        fe.content(html, type='CDATA')
-    return fg.rss_str(pretty=True)
-
-def fetch_user_videos(username, limit=20):
-    url = f"https://www.tiktok.com/@{username}?__a=1&__d=dis"
+def fetch_and_save(username, retries=3, timeout=20):
+    url = f"{RSSHUB_BASE}/tiktok/user/{username}"
     headers = {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -56,38 +30,29 @@ def fetch_user_videos(username, limit=20):
             "Chrome/118.0.0.0 Safari/537.36"
         )
     }
-    try:
-        r = requests.get(url, headers=headers, timeout=15)
-        if r.status_code != 200:
-            print(f"@{username}: HTTP {r.status_code}")
-            return []
-        data = r.json()
-        items = (
-            data.get('props', {})
-            .get('pageProps', {})
-            .get('items', [])
-        )
-        return items[:limit]
-    except Exception as e:
-        print(f"@{username}: erro ao obter JSON ({e})")
-        return []
+    for attempt in range(1, retries + 1):
+        try:
+            print(f"Baixando RSS @{username} ({url}) tentativa {attempt}/{retries}")
+            r = requests.get(url, headers=headers, timeout=timeout)
+            if r.status_code == 200 and r.text.strip().startswith("<?xml"):
+                (OUT_DIR / f"{username}.xml").write_text(r.text, encoding="utf-8")
+                print(f"✅ OK: feeds/{username}.xml")
+                return True
+            else:
+                print(f"HTTP {r.status_code} / conteúdo não-XML para @{username}")
+        except Exception as e:
+            print(f"@{username}: erro {e}")
+        time.sleep(2 * attempt)
+    print(f"⚠️ Falhei com @{username} após {retries} tentativas")
+    return False
 
 def main():
     users = read_users()
     if not users:
         print("Nenhum usuário no subscriptions.csv")
         return
-
     for u in users:
-        print(f"Coletando @{u} ...")
-        videos = fetch_user_videos(u)
-        if videos:
-            xml = build_feed(u, videos)
-            (OUT_DIR / f"{u}.xml").write_bytes(xml)
-            print(f"✅ OK: feeds/{u}.xml ({len(videos)} vídeos)")
-        else:
-            print(f"⚠️ Nenhum vídeo encontrado para @{u}")
-        time.sleep(2)
+        fetch_and_save(u)
 
 if __name__ == "__main__":
     main()
